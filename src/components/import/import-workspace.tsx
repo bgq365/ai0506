@@ -9,7 +9,6 @@ import {
   Save,
   Send,
   Sparkles,
-  Tag,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -50,7 +49,8 @@ const defaultProgress: ImportProgressState = {
 function createDefaultBatchCode() {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, "0");
-  return `BATCH-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const year = String(now.getFullYear()).slice(-2);
+  return `B${year}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
 export function ImportWorkspace() {
@@ -63,7 +63,7 @@ export function ImportWorkspace() {
   const [mapping, setMapping] = useState<FieldMapping>({});
   const [rows, setRows] = useState<OrderDraft[]>([]);
   const [existingCodes, setExistingCodes] = useState<string[]>([]);
-  const [batchCode, setBatchCode] = useState(createDefaultBatchCode());
+  const [batchCode] = useState(createDefaultBatchCode());
   const [isCheckingCodes, setIsCheckingCodes] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState("");
@@ -236,11 +236,6 @@ export function ImportWorkspace() {
     void refreshExistingCodes(nextRows);
   }
 
-  function handleBatchCodeChange(value: string) {
-    setBatchCode(value);
-    setRows((currentRows) => updateBatchCode(currentRows, value));
-  }
-
   function handleCellChange(rowId: string, field: CanonicalFieldKey, value: string) {
     setRows((currentRows) =>
       currentRows.map((row) => (row.rowId === rowId ? updateDraftField(row, field, value) : row)),
@@ -371,16 +366,9 @@ export function ImportWorkspace() {
             </div>
 
             <div className="rounded-[28px] border border-card-border bg-white/55 p-4">
-              <label className="flex items-center gap-3 text-sm font-medium text-foreground">
-                <Tag className="h-4 w-4 text-accent" />
-                批次号
-              </label>
-              <input
-                value={batchCode}
-                onChange={(event) => handleBatchCodeChange(event.target.value)}
-                placeholder="请输入导入批次号"
-                className="mt-3 w-full rounded-2xl border border-card-border bg-white px-4 py-3 outline-none"
-              />
+              <p className="section-title">批次号</p>
+              <p className="mt-3 text-lg font-semibold text-foreground">{batchCode}</p>
+              <p className="mt-2 text-sm text-muted-foreground">系统自动生成本次导入批次号，提交时自动写入数据库。</p>
             </div>
 
             <label
@@ -439,7 +427,7 @@ export function ImportWorkspace() {
           <p className="section-title">模板下载</p>
           <h2 className="mt-2 text-2xl font-semibold">下载标准导入模板</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            不再展示考试样例文件，改为提供系统自定义下载模板。批次号统一在左侧导入入口填写并随本次提交一起入库。
+            不再展示考试样例文件，改为提供系统自定义下载模板。批次号由系统自动生成并随本次提交一起入库。
           </p>
           <div className="mt-5">
             <SampleTemplateList />

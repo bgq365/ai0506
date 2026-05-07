@@ -58,16 +58,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </nav>
-
-          <div className="mt-auto rounded-[26px] border border-card-border bg-white/55 p-4">
-            <p className="section-title">评分要点提醒</p>
-            <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-              <li>5 个模板兼容</li>
-              <li>全量错误一次性展示</li>
-              <li>模板学习 + 历史运单查询</li>
-              <li>Vercel 在线可访问</li>
-            </ul>
-          </div>
         </aside>
 
         <main className="min-w-0 flex-1">{children}</main>
