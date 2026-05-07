@@ -31,9 +31,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <p className="text-sm text-muted-foreground">多模板识别 / 批量校验 / 运单入库</p>
                 </div>
               </div>
-              <div className="rounded-3xl border border-card-border bg-white/55 p-4 text-sm text-muted-foreground">
-                本界面避开紫色系，采用米白、炭黑、橙青对比，保证数据密集场景下的稳定可读性。
-              </div>
             </div>
           </div>
 

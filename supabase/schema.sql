@@ -2,6 +2,7 @@ create extension if not exists "pgcrypto";
 
 create table if not exists public.import_batches (
   id text primary key,
+  batch_code text not null,
   file_name text not null,
   template_signature text not null,
   success_count integer not null default 0,
@@ -9,9 +10,20 @@ create table if not exists public.import_batches (
   submitted_at timestamptz not null default now()
 );
 
+alter table public.import_batches
+  add column if not exists batch_code text;
+
+update public.import_batches
+set batch_code = coalesce(nullif(batch_code, ''), id)
+where batch_code is null or batch_code = '';
+
+alter table public.import_batches
+  alter column batch_code set not null;
+
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
   batch_id text not null references public.import_batches(id) on delete cascade,
+  batch_code text not null,
   template_signature text not null,
   file_name text not null,
   submitted_at timestamptz not null default now(),
@@ -28,11 +40,30 @@ create table if not exists public.orders (
   remark text null
 );
 
+alter table public.orders
+  add column if not exists batch_code text;
+
+update public.orders
+set batch_code = coalesce(
+  nullif(batch_code, ''),
+  (
+    select ib.batch_code
+    from public.import_batches ib
+    where ib.id = public.orders.batch_id
+  ),
+  batch_id
+)
+where batch_code is null or batch_code = '';
+
+alter table public.orders
+  alter column batch_code set not null;
+
 create unique index if not exists orders_external_code_unique
   on public.orders (external_code)
   where external_code is not null and external_code <> '';
 
 create index if not exists orders_receiver_name_idx on public.orders (receiver_name);
+create index if not exists orders_batch_code_idx on public.orders (batch_code);
 create index if not exists orders_submitted_at_idx on public.orders (submitted_at desc);
 
 create table if not exists public.template_mappings (

@@ -39,7 +39,7 @@ async function main() {
 
   await client.connect();
   const result = await client.query(`
-    select external_code, receiver_name, submitted_at
+    select batch_code, external_code, receiver_name, submitted_at
     from public.orders
     order by submitted_at desc
     limit 10

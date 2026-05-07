@@ -33,10 +33,12 @@ async function main() {
 
   const stamp = Math.floor(Date.now() / 1000);
   const batchId = `smoke-${stamp}`;
+  const batchCode = `BATCH-SMOKE-${stamp}`;
   const externalCode = `SMOKE-${stamp}`;
 
   const batchInsert = await supabase.from("import_batches").insert({
     id: batchId,
+    batch_code: batchCode,
     file_name: "smoke-script.xlsx",
     template_signature: "smoke::script",
     success_count: 1,
@@ -50,6 +52,7 @@ async function main() {
 
   const orderInsert = await supabase.from("orders").insert({
     batch_id: batchId,
+    batch_code: batchCode,
     template_signature: "smoke::script",
     file_name: "smoke-script.xlsx",
     submitted_at: new Date().toISOString(),
@@ -72,7 +75,7 @@ async function main() {
 
   const verify = await supabase
     .from("orders")
-    .select("external_code, receiver_name, submitted_at")
+    .select("batch_code, external_code, receiver_name, submitted_at")
     .eq("external_code", externalCode)
     .limit(1);
 

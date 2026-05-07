@@ -11,6 +11,7 @@ export async function POST(request: Request) {
     }
 
     const result = await submitOrders(
+      parsed.data.batchCode,
       parsed.data.fileName,
       parsed.data.templateSignature,
       parsed.data.rows,
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
       return fail(
         409,
         "submit_conflict",
-        "当前数据仍存在错误，无法提交",
+        "当前批次存在未通过校验或重复数据，未完成提交",
         result.failures.map((failure) => ({
           field: failure.field,
           message: `第 ${failure.rowIndex} 行：${failure.message}`,

@@ -35,8 +35,8 @@
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-success: var(--success);
-  --font-sans: var(--font-space-grotesk);
-  --font-mono: var(--font-plex-mono);
+  --font-sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
 }
 
 * {
@@ -53,7 +53,7 @@ body {
     radial-gradient(circle at top right, rgba(21, 122, 110, 0.14), transparent 22%),
     linear-gradient(180deg, var(--background) 0%, #fbf6ef 44%, var(--background-deep) 100%);
   color: var(--foreground);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-sans);
 }
 
 a {

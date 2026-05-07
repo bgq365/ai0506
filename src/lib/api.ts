@@ -8,6 +8,7 @@ export const orderDraftSchema = z.object({
   rowId: z.string(),
   rowIndex: z.number().int().positive(),
   sourceSheet: z.string(),
+  batchCode: z.string(),
   externalCode: z.string(),
   senderName: z.string(),
   senderPhone: z.string(),
@@ -22,6 +23,7 @@ export const orderDraftSchema = z.object({
 });
 
 export const submitOrdersSchema = z.object({
+  batchCode: z.string().min(1),
   fileName: z.string().min(1),
   templateSignature: z.string().min(1),
   rows: z.array(orderDraftSchema),
@@ -35,6 +37,7 @@ export const templateMappingSchema = z.object({
 });
 
 export const orderListQuerySchema = z.object({
+  batchCode: z.string().optional(),
   externalCode: z.string().optional(),
   receiverName: z.string().optional(),
   submittedFrom: z.string().optional(),

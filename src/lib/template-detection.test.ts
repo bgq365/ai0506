@@ -57,7 +57,7 @@ describe("analyzeWorkbook", () => {
 describe("validateOrders", () => {
   it("returns all validation errors at once", () => {
     const result = analyzeWorkbook(readWorkbookFromFile(sample("template1-standard.xlsx")), "template1-standard.xlsx");
-    const rows = result.rows.map((row) => ({ ...row }));
+    const rows = result.rows.map((row) => ({ ...row, batchCode: "BATCH-001" }));
     rows[0].receiverPhone = "abc";
     rows[1].weightKg = "0";
     rows[2].packageCount = "2.5";

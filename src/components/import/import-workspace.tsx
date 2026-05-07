@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpToLine, FileSpreadsheet, Plus, RefreshCw, Save, Send, Sparkles } from "lucide-react";
+import {
+  ArrowUpToLine,
+  FileSpreadsheet,
+  Plus,
+  RefreshCw,
+  Save,
+  Send,
+  Sparkles,
+  Tag,
+} from "lucide-react";
 import * as XLSX from "xlsx";
 
 import { ErrorPanel } from "@/components/import/error-panel";
@@ -12,7 +21,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { ProgressBar } from "@/components/ui/progress-bar";
-import { createEmptyOrderDraft, reindexRows, serializeRowsForExport, updateDraftField } from "@/lib/order-draft";
+import {
+  createEmptyOrderDraft,
+  reindexRows,
+  serializeRowsForExport,
+  updateBatchCode,
+  updateDraftField,
+} from "@/lib/order-draft";
 import type {
   CanonicalFieldKey,
   FieldMapping,
@@ -32,6 +47,12 @@ const defaultProgress: ImportProgressState = {
   label: "等待导入 Excel 文件",
 };
 
+function createDefaultBatchCode() {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `BATCH-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
 export function ImportWorkspace() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -42,6 +63,7 @@ export function ImportWorkspace() {
   const [mapping, setMapping] = useState<FieldMapping>({});
   const [rows, setRows] = useState<OrderDraft[]>([]);
   const [existingCodes, setExistingCodes] = useState<string[]>([]);
+  const [batchCode, setBatchCode] = useState(createDefaultBatchCode());
   const [isCheckingCodes, setIsCheckingCodes] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState("");
@@ -114,7 +136,7 @@ export function ImportWorkspace() {
     });
 
     return sheet.rawRows.slice(headerCandidate.rowIndex + 1).map((row, index) => {
-      const draft = createEmptyOrderDraft(index + 1, sheet.sheetName);
+      const draft = createEmptyOrderDraft(index + 1, sheet.sheetName, batchCode);
 
       (Object.keys(nextMapping) as CanonicalFieldKey[]).forEach((field) => {
         const header = nextMapping[field];
@@ -167,10 +189,11 @@ export function ImportWorkspace() {
       }
 
       const payload = message.payload;
+      const nextRows = updateBatchCode(payload.rows, batchCode);
       setDetection(payload);
       setMapping(payload.mapping);
-      setRows(payload.rows);
-      await refreshExistingCodes(payload.rows);
+      setRows(nextRows);
+      await refreshExistingCodes(nextRows);
     };
 
     worker.postMessage({
@@ -213,6 +236,11 @@ export function ImportWorkspace() {
     void refreshExistingCodes(nextRows);
   }
 
+  function handleBatchCodeChange(value: string) {
+    setBatchCode(value);
+    setRows((currentRows) => updateBatchCode(currentRows, value));
+  }
+
   function handleCellChange(rowId: string, field: CanonicalFieldKey, value: string) {
     setRows((currentRows) =>
       currentRows.map((row) => (row.rowId === rowId ? updateDraftField(row, field, value) : row)),
@@ -224,17 +252,22 @@ export function ImportWorkspace() {
   }
 
   function handleAddRow() {
-    setRows((currentRows) => [...currentRows, createEmptyOrderDraft(currentRows.length + 1)]);
+    setRows((currentRows) => [...currentRows, createEmptyOrderDraft(currentRows.length + 1, "手动新增", batchCode)]);
   }
 
   function handleExport() {
     const worksheet = XLSX.utils.json_to_sheet(serializeRowsForExport(rows));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "预览数据");
-    XLSX.writeFile(workbook, "orders-preview.xlsx");
+    XLSX.writeFile(workbook, `${batchCode || "orders"}-preview.xlsx`);
   }
 
   async function handleSubmit() {
+    if (!batchCode.trim()) {
+      setToast("请先填写批次号。");
+      return;
+    }
+
     if (!detection || rows.length === 0 || errors.length > 0) {
       setToast("请先修正错误后再提交。");
       return;
@@ -248,6 +281,7 @@ export function ImportWorkspace() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          batchCode,
           fileName: detection.fileName,
           templateSignature: detection.templateSignature,
           rows,
@@ -260,7 +294,7 @@ export function ImportWorkspace() {
         return;
       }
 
-      setToast(`提交成功：${json.data.successCount} 条已写入数据库。`);
+      setToast(`提交成功：批次号 ${batchCode}，${json.data.successCount} 条已写入数据库。`);
       await refreshExistingCodes(rows);
     } catch {
       setToast("提交失败，请稍后重试。");
@@ -289,8 +323,8 @@ export function ImportWorkspace() {
           </div>
           <div className="grid gap-3 md:grid-cols-3">
             <div className="metric-chip rounded-3xl px-4 py-3">
-              <p className="section-title">支持模板</p>
-              <p className="mt-2 text-3xl font-semibold">5</p>
+              <p className="section-title">模板下载</p>
+              <p className="mt-2 text-3xl font-semibold">3</p>
             </div>
             <div className="metric-chip rounded-3xl px-4 py-3">
               <p className="section-title">实时状态</p>
@@ -334,6 +368,19 @@ export function ImportWorkspace() {
                   刷新重复校验
                 </Button>
               </div>
+            </div>
+
+            <div className="rounded-[28px] border border-card-border bg-white/55 p-4">
+              <label className="flex items-center gap-3 text-sm font-medium text-foreground">
+                <Tag className="h-4 w-4 text-accent" />
+                批次号
+              </label>
+              <input
+                value={batchCode}
+                onChange={(event) => handleBatchCodeChange(event.target.value)}
+                placeholder="请输入导入批次号"
+                className="mt-3 w-full rounded-2xl border border-card-border bg-white px-4 py-3 outline-none"
+              />
             </div>
 
             <label
@@ -389,10 +436,10 @@ export function ImportWorkspace() {
         </Panel>
 
         <Panel className="p-5 md:p-6">
-          <p className="section-title">样例模板</p>
-          <h2 className="mt-2 text-2xl font-semibold">题面附带的 5 份测试文件</h2>
+          <p className="section-title">模板下载</p>
+          <h2 className="mt-2 text-2xl font-semibold">下载标准导入模板</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            已复制到项目 `public/samples` 目录，可直接下载验证列名差异、多 Sheet 和分组表头。
+            不再展示考试样例文件，改为提供系统自定义下载模板。批次号统一在左侧导入入口填写并随本次提交一起入库。
           </p>
           <div className="mt-5">
             <SampleTemplateList />
@@ -414,7 +461,11 @@ export function ImportWorkspace() {
 
         {detection && activeSheet ? (
           <div className="mt-5 space-y-5">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="rounded-2xl border border-card-border bg-white/55 p-4">
+                <p className="section-title">批次号</p>
+                <p className="mt-2 text-lg font-semibold">{batchCode}</p>
+              </div>
               <div className="rounded-2xl border border-card-border bg-white/55 p-4">
                 <p className="section-title">选中 Sheet</p>
                 <p className="mt-2 text-lg font-semibold">{detection.selectedSheetName}</p>

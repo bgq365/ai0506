@@ -83,7 +83,12 @@ export async function fetchTemplateMappings() {
   })) satisfies TemplateMapping[];
 }
 
-export async function submitOrders(fileName: string, templateSignature: string, rows: OrderDraft[]) {
+export async function submitOrders(
+  batchCode: string,
+  fileName: string,
+  templateSignature: string,
+  rows: OrderDraft[],
+) {
   const supabase = getSupabaseServerClient();
   const batchId = nanoid();
 
@@ -115,6 +120,7 @@ export async function submitOrders(fileName: string, templateSignature: string, 
   const submittedAt = new Date().toISOString();
   const { error: insertBatchError } = await supabase.from("import_batches").insert({
     id: batchId,
+    batch_code: batchCode,
     file_name: fileName,
     template_signature: templateSignature,
     success_count: rows.length,
@@ -128,6 +134,7 @@ export async function submitOrders(fileName: string, templateSignature: string, 
 
   const orderPayload = rows.map((row) => ({
     batch_id: batchId,
+    batch_code: batchCode,
     template_signature: templateSignature,
     file_name: fileName,
     submitted_at: submittedAt,
@@ -158,6 +165,7 @@ export async function submitOrders(fileName: string, templateSignature: string, 
 }
 
 export async function listOrders(query: {
+  batchCode?: string;
   externalCode?: string;
   receiverName?: string;
   submittedFrom?: string;
@@ -177,6 +185,10 @@ export async function listOrders(query: {
     .from("orders")
     .select("*", { count: "exact" })
     .order("submitted_at", { ascending: false });
+
+  if (query.batchCode) {
+    builder = builder.ilike("batch_code", `%${query.batchCode}%`);
+  }
 
   if (query.externalCode) {
     builder = builder.ilike("external_code", `%${query.externalCode}%`);
@@ -207,6 +219,7 @@ export async function listOrders(query: {
       (data ?? []).map((item) => ({
         id: item.id,
         batchId: item.batch_id,
+        batchCode: item.batch_code,
         templateSignature: item.template_signature,
         fileName: item.file_name,
         submittedAt: item.submitted_at,

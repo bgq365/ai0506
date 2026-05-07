@@ -10,6 +10,7 @@ export interface OrderDraft {
   rowId: string;
   rowIndex: number;
   sourceSheet: string;
+  batchCode: string;
   externalCode: string;
   senderName: string;
   senderPhone: string;
@@ -116,6 +117,7 @@ export interface OrderSubmissionFailure {
 }
 
 export interface SubmitOrdersRequest {
+  batchCode: string;
   fileName: string;
   templateSignature: string;
   rows: OrderDraft[];
@@ -124,6 +126,7 @@ export interface SubmitOrdersRequest {
 export interface OrderRecord {
   id: string;
   batchId: string;
+  batchCode: string;
   templateSignature: string;
   fileName: string;
   submittedAt: string;
@@ -141,6 +144,7 @@ export interface OrderRecord {
 }
 
 export interface OrderListQuery {
+  batchCode?: string;
   externalCode?: string;
   receiverName?: string;
   submittedFrom?: string;

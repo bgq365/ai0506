@@ -112,6 +112,7 @@ function toDraftRows(sheet: SheetAnalysis, templateMapping?: TemplateMapping) {
       rowId: nanoid(),
       rowIndex: index + 1,
       sourceSheet: sheet.sheetName,
+      batchCode: "",
       externalCode: "",
       senderName: "",
       senderPhone: "",

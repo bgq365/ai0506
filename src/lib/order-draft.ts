@@ -3,11 +3,16 @@ import { nanoid } from "nanoid";
 import { CANONICAL_FIELDS } from "@/lib/constants";
 import type { CanonicalFieldKey, OrderDraft } from "@/lib/types";
 
-export function createEmptyOrderDraft(rowIndex: number, sourceSheet = "手动新增"): OrderDraft {
+export function createEmptyOrderDraft(
+  rowIndex: number,
+  sourceSheet = "手动新增",
+  batchCode = "",
+): OrderDraft {
   return {
     rowId: nanoid(),
     rowIndex,
     sourceSheet,
+    batchCode,
     externalCode: "",
     senderName: "",
     senderPhone: "",
@@ -22,15 +27,18 @@ export function createEmptyOrderDraft(rowIndex: number, sourceSheet = "手动新
   };
 }
 
-export function updateDraftField(
-  row: OrderDraft,
-  field: CanonicalFieldKey,
-  value: string,
-): OrderDraft {
+export function updateDraftField(row: OrderDraft, field: CanonicalFieldKey, value: string): OrderDraft {
   return {
     ...row,
     [field]: value,
   };
+}
+
+export function updateBatchCode(rows: OrderDraft[], batchCode: string) {
+  return rows.map((row) => ({
+    ...row,
+    batchCode,
+  }));
 }
 
 export function reindexRows(rows: OrderDraft[]) {
@@ -42,7 +50,9 @@ export function reindexRows(rows: OrderDraft[]) {
 
 export function serializeRowsForExport(rows: OrderDraft[]) {
   return rows.map((row) => {
-    const record: Record<string, string> = {};
+    const record: Record<string, string> = {
+      batchCode: row.batchCode,
+    };
 
     CANONICAL_FIELDS.forEach((field) => {
       record[field] = row[field];

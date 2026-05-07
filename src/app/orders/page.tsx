@@ -26,6 +26,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const requestedPageSize = Number(getStringParam(resolvedSearchParams.pageSize) ?? 10);
   const pageSize = PAGE_SIZE_OPTIONS.includes(requestedPageSize as never) ? requestedPageSize : 10;
 
+  const batchCode = getStringParam(resolvedSearchParams.batchCode);
   const externalCode = getStringParam(resolvedSearchParams.externalCode);
   const receiverName = getStringParam(resolvedSearchParams.receiverName);
   const submittedFrom = getStringParam(resolvedSearchParams.submittedFrom);
@@ -34,6 +35,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const safePage = Number.isFinite(page) && page > 0 ? page : 1;
 
   const { data, total } = await listOrders({
+    batchCode,
     externalCode,
     receiverName,
     submittedFrom,
@@ -48,6 +50,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
 
   function buildPageHref(nextPage: number) {
     const params = new URLSearchParams();
+    if (batchCode) params.set("batchCode", batchCode);
     if (externalCode) params.set("externalCode", externalCode);
     if (receiverName) params.set("receiverName", receiverName);
     if (submittedFrom) params.set("submittedFrom", submittedFrom);
@@ -78,6 +81,12 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
 
         <Panel className="p-5 md:p-6">
           <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+            <input
+              name="batchCode"
+              defaultValue={batchCode}
+              placeholder="按批次号搜索"
+              className="rounded-2xl border border-card-border bg-white px-4 py-3 outline-none"
+            />
             <input
               name="externalCode"
               defaultValue={externalCode}
@@ -130,7 +139,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             <table className="min-w-full">
               <thead className="bg-[#f7eee1]">
                 <tr>
-                  {["提交时间", "外部编码", "收件人", "收件电话", "重量", "件数", "温层", "文件"].map((header) => (
+                  {["提交时间", "批次号", "外部编码", "收件人", "收件电话", "重量", "件数", "温层", "文件"].map((header) => (
                     <th
                       key={header}
                       className="border-b border-card-border px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground"
@@ -145,6 +154,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                   data.map((order) => (
                     <tr key={order.id} className="border-b border-card-border/70 bg-white/45">
                       <td className="px-4 py-4 text-sm">{formatDateTime(order.submittedAt)}</td>
+                      <td className="px-4 py-4 text-sm">{order.batchCode}</td>
                       <td className="px-4 py-4 text-sm">{order.externalCode ?? "-"}</td>
                       <td className="px-4 py-4 text-sm">{order.receiverName}</td>
                       <td className="px-4 py-4 text-sm">{order.receiverPhone}</td>
@@ -156,7 +166,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} className="px-4 py-14 text-center text-sm text-muted-foreground">
+                    <td colSpan={9} className="px-4 py-14 text-center text-sm text-muted-foreground">
                       暂无历史运单。完成首次提交后，这里会展示数据库记录。
                     </td>
                   </tr>
