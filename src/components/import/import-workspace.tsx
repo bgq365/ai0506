@@ -63,7 +63,7 @@ export function ImportWorkspace() {
   const [mapping, setMapping] = useState<FieldMapping>({});
   const [rows, setRows] = useState<OrderDraft[]>([]);
   const [existingCodes, setExistingCodes] = useState<string[]>([]);
-  const [batchCode] = useState(createDefaultBatchCode());
+  const [batchCode, setBatchCode] = useState(createDefaultBatchCode());
   const [isCheckingCodes, setIsCheckingCodes] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState("");
@@ -82,6 +82,20 @@ export function ImportWorkspace() {
   useEffect(() => {
     return () => workerRef.current?.terminate();
   }, []);
+
+  function resetWorkspaceAfterSubmit() {
+    setDetection(null);
+    setMapping({});
+    setRows([]);
+    setExistingCodes([]);
+    setProgress(defaultProgress);
+    setFatalError("");
+    setBatchCode(createDefaultBatchCode());
+
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  }
 
   async function refreshExistingCodes(nextRows: OrderDraft[]) {
     setIsCheckingCodes(true);
@@ -273,7 +287,7 @@ export function ImportWorkspace() {
       }
 
       setToast(`提交成功：批次号 ${batchCode}，${json.data.successCount} 条已写入数据库。`);
-      await refreshExistingCodes(rows);
+      resetWorkspaceAfterSubmit();
     } catch {
       setToast("提交失败，请稍后重试。");
     } finally {
