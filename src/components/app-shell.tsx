@@ -49,12 +49,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   className={cn(
                     "flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition",
                     active
-                      ? "border-transparent bg-surface-ink text-white shadow-lg shadow-orange-950/15"
+                      ? "border-[#d1b08c] bg-[#f2dfca] text-[#3e2f21] shadow-sm"
                       : "border-card-border bg-white/45 text-foreground hover:bg-white/70",
                   )}
                 >
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
+                  <Icon className={cn("h-4 w-4", active ? "text-accent" : "text-foreground")} />
+                  <span className={cn("font-medium", active ? "text-[#3e2f21]" : "text-foreground")}>
+                    {item.label}
+                  </span>
                 </Link>
               );
             })}

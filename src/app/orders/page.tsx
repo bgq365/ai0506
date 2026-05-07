@@ -1,44 +1,61 @@
+import Link from "next/link";
+
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { listOrders } from "@/lib/server/orders";
 import { formatDateTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
 interface OrdersPageProps {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
 
+function getStringParam(value: string | string[] | undefined) {
+  return typeof value === "string" ? value : undefined;
+}
+
 export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const resolvedSearchParams = (await searchParams) ?? {};
-  const page = Number(resolvedSearchParams.page ?? 1);
-  const pageSize = Number(resolvedSearchParams.pageSize ?? 10);
-  const externalCode =
-    typeof resolvedSearchParams.externalCode === "string"
-      ? resolvedSearchParams.externalCode
-      : undefined;
-  const receiverName =
-    typeof resolvedSearchParams.receiverName === "string"
-      ? resolvedSearchParams.receiverName
-      : undefined;
-  const submittedFrom =
-    typeof resolvedSearchParams.submittedFrom === "string"
-      ? resolvedSearchParams.submittedFrom
-      : undefined;
-  const submittedTo =
-    typeof resolvedSearchParams.submittedTo === "string"
-      ? resolvedSearchParams.submittedTo
-      : undefined;
+
+  const page = Number(getStringParam(resolvedSearchParams.page) ?? 1);
+  const requestedPageSize = Number(getStringParam(resolvedSearchParams.pageSize) ?? 10);
+  const pageSize = PAGE_SIZE_OPTIONS.includes(requestedPageSize as never) ? requestedPageSize : 10;
+
+  const externalCode = getStringParam(resolvedSearchParams.externalCode);
+  const receiverName = getStringParam(resolvedSearchParams.receiverName);
+  const submittedFrom = getStringParam(resolvedSearchParams.submittedFrom);
+  const submittedTo = getStringParam(resolvedSearchParams.submittedTo);
+
+  const safePage = Number.isFinite(page) && page > 0 ? page : 1;
 
   const { data, total } = await listOrders({
     externalCode,
     receiverName,
     submittedFrom,
     submittedTo,
-    page: Number.isFinite(page) && page > 0 ? page : 1,
-    pageSize: Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 10,
+    page: safePage,
+    pageSize,
   });
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(safePage, totalPages);
+  const resetHref = "/orders";
+
+  function buildPageHref(nextPage: number) {
+    const params = new URLSearchParams();
+    if (externalCode) params.set("externalCode", externalCode);
+    if (receiverName) params.set("receiverName", receiverName);
+    if (submittedFrom) params.set("submittedFrom", submittedFrom);
+    if (submittedTo) params.set("submittedTo", submittedTo);
+    params.set("page", String(nextPage));
+    params.set("pageSize", String(pageSize));
+    return `/orders?${params.toString()}`;
+  }
 
   return (
     <AppShell>
@@ -60,7 +77,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         </section>
 
         <Panel className="p-5 md:p-6">
-          <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
             <input
               name="externalCode"
               defaultValue={externalCode}
@@ -85,7 +102,26 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
               defaultValue={submittedTo}
               className="rounded-2xl border border-card-border bg-white px-4 py-3 outline-none"
             />
-            <button className="rounded-2xl bg-surface-ink px-4 py-3 text-white">筛选记录</button>
+            <select
+              name="pageSize"
+              defaultValue={String(pageSize)}
+              className="rounded-2xl border border-card-border bg-white px-4 py-3 outline-none"
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option} 行/页
+                </option>
+              ))}
+            </select>
+            <input type="hidden" name="page" value="1" />
+            <Button type="submit" className="w-full">
+              筛选记录
+            </Button>
+            <Link href={resetHref} className="w-full">
+              <Button type="button" variant="secondary" className="w-full">
+                重置
+              </Button>
+            </Link>
           </form>
         </Panel>
 
@@ -121,12 +157,33 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                 ) : (
                   <tr>
                     <td colSpan={8} className="px-4 py-14 text-center text-sm text-muted-foreground">
-                      暂无历史运单。接入 Supabase 并完成首次提交后，这里会展示数据库记录。
+                      暂无历史运单。完成首次提交后，这里会展示数据库记录。
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-card-border bg-white/55 px-4 py-4 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-muted-foreground">
+              第 {currentPage} / {totalPages} 页，共 {total} 条，每页 {pageSize} 条
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link href={buildPageHref(Math.max(1, currentPage - 1))} aria-disabled={currentPage <= 1}>
+                <Button type="button" variant="secondary" disabled={currentPage <= 1}>
+                  上一页
+                </Button>
+              </Link>
+              <div className="rounded-2xl border border-card-border bg-white px-4 py-2 text-sm text-foreground">
+                {currentPage}
+              </div>
+              <Link href={buildPageHref(Math.min(totalPages, currentPage + 1))} aria-disabled={currentPage >= totalPages}>
+                <Button type="button" variant="secondary" disabled={currentPage >= totalPages}>
+                  下一页
+                </Button>
+              </Link>
+            </div>
           </div>
         </Panel>
       </div>
