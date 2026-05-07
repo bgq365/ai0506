@@ -1,0 +1,504 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUpToLine, FileSpreadsheet, Plus, RefreshCw, Save, Send, Sparkles } from "lucide-react";
+import * as XLSX from "xlsx";
+
+import { ErrorPanel } from "@/components/import/error-panel";
+import { MappingEditor } from "@/components/import/mapping-editor";
+import { OrdersGrid } from "@/components/import/orders-grid";
+import { SampleTemplateList } from "@/components/import/sample-template-list";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Panel } from "@/components/ui/panel";
+import { ProgressBar } from "@/components/ui/progress-bar";
+import { createEmptyOrderDraft, reindexRows, serializeRowsForExport, updateDraftField } from "@/lib/order-draft";
+import type {
+  CanonicalFieldKey,
+  FieldMapping,
+  ImportDetectionResult,
+  ImportProgressState,
+  ImportWorkerMessage,
+  OrderDraft,
+  TemplateMapping,
+} from "@/lib/types";
+import { validateOrders } from "@/lib/validation";
+
+const defaultProgress: ImportProgressState = {
+  phase: "idle",
+  current: 0,
+  total: 0,
+  percent: 0,
+  label: "等待导入 Excel 文件",
+};
+
+export function ImportWorkspace() {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+
+  const [savedMappings, setSavedMappings] = useState<TemplateMapping[]>([]);
+  const [progress, setProgress] = useState<ImportProgressState>(defaultProgress);
+  const [detection, setDetection] = useState<ImportDetectionResult | null>(null);
+  const [mapping, setMapping] = useState<FieldMapping>({});
+  const [rows, setRows] = useState<OrderDraft[]>([]);
+  const [existingCodes, setExistingCodes] = useState<string[]>([]);
+  const [isCheckingCodes, setIsCheckingCodes] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [toast, setToast] = useState("");
+  const [fatalError, setFatalError] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+
+  const errors = useMemo(() => validateOrders(rows, existingCodes), [existingCodes, rows]);
+
+  useEffect(() => {
+    void fetch("/api/template-mappings")
+      .then((response) => response.json())
+      .then((json) => setSavedMappings(json.data ?? []))
+      .catch(() => setSavedMappings([]));
+  }, []);
+
+  useEffect(() => {
+    return () => workerRef.current?.terminate();
+  }, []);
+
+  async function refreshExistingCodes(nextRows: OrderDraft[]) {
+    setIsCheckingCodes(true);
+
+    try {
+      const response = await fetch("/api/orders/check-duplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          externalCodes: nextRows.map((row) => row.externalCode.trim()).filter(Boolean),
+        }),
+      });
+
+      const json = await response.json();
+      setExistingCodes(json.data?.existingCodes ?? []);
+    } catch {
+      setExistingCodes([]);
+    } finally {
+      setIsCheckingCodes(false);
+    }
+  }
+
+  async function saveCurrentMapping(nextMapping: FieldMapping, nextDetection: ImportDetectionResult) {
+    try {
+      await fetch("/api/template-mappings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateSignature: nextDetection.templateSignature,
+          sheetName: nextDetection.selectedSheetName,
+          headerFingerprint: nextDetection.headerFingerprint,
+          mapping: nextMapping,
+        }),
+      });
+
+      setToast("模板映射已记录，下次同结构会自动套用。");
+    } catch {
+      setToast("模板映射保存失败，但当前预览不受影响。");
+    }
+  }
+
+  function remapRows(nextDetection: ImportDetectionResult, nextMapping: FieldMapping, sheetName: string) {
+    const sheet = nextDetection.availableSheets.find((item) => item.sheetName === sheetName);
+    const headerCandidate = sheet?.headerCandidate;
+    if (!sheet || !headerCandidate) {
+      return [];
+    }
+
+    const indexMap = new Map<string, number>();
+    headerCandidate.values.forEach((header, index) => {
+      indexMap.set(header, index);
+    });
+
+    return sheet.rawRows.slice(headerCandidate.rowIndex + 1).map((row, index) => {
+      const draft = createEmptyOrderDraft(index + 1, sheet.sheetName);
+
+      (Object.keys(nextMapping) as CanonicalFieldKey[]).forEach((field) => {
+        const header = nextMapping[field];
+        if (!header) {
+          return;
+        }
+
+        const cellIndex = indexMap.get(header);
+        draft[field] = cellIndex === undefined ? "" : String(row[cellIndex] ?? "").trim();
+      });
+
+      return draft;
+    });
+  }
+
+  async function handleFile(file: File) {
+    setFatalError("");
+    setToast("");
+
+    if (!/\.xlsx?$/.test(file.name.toLowerCase())) {
+      setFatalError("仅支持 .xls / .xlsx 文件。");
+      return;
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    workerRef.current?.terminate();
+    const worker = new Worker(new URL("@/workers/excel-import.worker.ts", import.meta.url), {
+      type: "module",
+    });
+    workerRef.current = worker;
+
+    worker.onmessage = async (event: MessageEvent<ImportWorkerMessage>) => {
+      const message = event.data;
+
+      if (message.type === "progress") {
+        setProgress(message.payload);
+        return;
+      }
+
+      if (message.type === "error") {
+        setFatalError(message.payload.message);
+        setProgress({
+          phase: "error",
+          current: 0,
+          total: 0,
+          percent: 0,
+          label: message.payload.message,
+        });
+        return;
+      }
+
+      const payload = message.payload;
+      setDetection(payload);
+      setMapping(payload.mapping);
+      setRows(payload.rows);
+      await refreshExistingCodes(payload.rows);
+    };
+
+    worker.postMessage({
+      fileName: file.name,
+      arrayBuffer,
+      savedMappings,
+    });
+  }
+
+  function handleMappingChange(field: CanonicalFieldKey, header: string) {
+    if (!detection) {
+      return;
+    }
+
+    const nextMapping = {
+      ...mapping,
+      [field]: header,
+    };
+    const nextRows = remapRows(detection, nextMapping, detection.selectedSheetName);
+
+    setMapping(nextMapping);
+    setRows(nextRows);
+    void refreshExistingCodes(nextRows);
+    void saveCurrentMapping(nextMapping, detection);
+  }
+
+  function handleSheetChange(sheetName: string) {
+    if (!detection) {
+      return;
+    }
+
+    const nextDetection = {
+      ...detection,
+      selectedSheetName: sheetName,
+    };
+    const nextRows = remapRows(nextDetection, mapping, sheetName);
+
+    setDetection(nextDetection);
+    setRows(nextRows);
+    void refreshExistingCodes(nextRows);
+  }
+
+  function handleCellChange(rowId: string, field: CanonicalFieldKey, value: string) {
+    setRows((currentRows) =>
+      currentRows.map((row) => (row.rowId === rowId ? updateDraftField(row, field, value) : row)),
+    );
+  }
+
+  function handleDeleteRow(rowId: string) {
+    setRows((currentRows) => reindexRows(currentRows.filter((row) => row.rowId !== rowId)));
+  }
+
+  function handleAddRow() {
+    setRows((currentRows) => [...currentRows, createEmptyOrderDraft(currentRows.length + 1)]);
+  }
+
+  function handleExport() {
+    const worksheet = XLSX.utils.json_to_sheet(serializeRowsForExport(rows));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "预览数据");
+    XLSX.writeFile(workbook, "orders-preview.xlsx");
+  }
+
+  async function handleSubmit() {
+    if (!detection || rows.length === 0 || errors.length > 0) {
+      setToast("请先修正错误后再提交。");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setToast("");
+
+    try {
+      const response = await fetch("/api/orders/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: detection.fileName,
+          templateSignature: detection.templateSignature,
+          rows,
+        }),
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        setToast(json.error?.message ?? "提交失败");
+        return;
+      }
+
+      setToast(`提交成功：${json.data.successCount} 条已写入数据库。`);
+      await refreshExistingCodes(rows);
+    } catch {
+      setToast("提交失败，请稍后重试。");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const activeSheet = detection?.availableSheets.find((sheet) => sheet.sheetName === detection.selectedSheetName);
+  const headers = activeSheet?.headerCandidate?.values ?? [];
+
+  return (
+    <div className="space-y-4">
+      <section className="glass-panel rounded-[34px] p-6 md:p-8">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl space-y-4">
+            <Badge className="bg-accent-soft text-accent">Excel Intake Engine</Badge>
+            <div className="space-y-3">
+              <h1 className="max-w-4xl text-4xl font-semibold tracking-tight md:text-5xl">
+                万能导入，不靠固定模板吃饭。
+              </h1>
+              <p className="max-w-3xl text-base leading-7 text-muted-foreground md:text-lg">
+                自动识别多种 Excel 表头结构，给出可编辑预览、一次性错误校验、模板学习和批量入库。
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="metric-chip rounded-3xl px-4 py-3">
+              <p className="section-title">支持模板</p>
+              <p className="mt-2 text-3xl font-semibold">5</p>
+            </div>
+            <div className="metric-chip rounded-3xl px-4 py-3">
+              <p className="section-title">实时状态</p>
+              <p className="mt-2 text-lg font-semibold">{progress.label}</p>
+            </div>
+            <div className="metric-chip rounded-3xl px-4 py-3">
+              <p className="section-title">当前行数</p>
+              <p className="mt-2 text-3xl font-semibold">{rows.length}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+        <Panel className="p-5 md:p-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="section-title">导入入口</p>
+                <h2 className="mt-2 text-2xl font-semibold">上传 Excel 文件并自动分析</h2>
+              </div>
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".xls,.xlsx"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    void handleFile(file);
+                  }
+                }}
+              />
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => inputRef.current?.click()}>
+                  <ArrowUpToLine className="h-4 w-4" />
+                  选择文件
+                </Button>
+                <Button variant="ghost" onClick={() => void refreshExistingCodes(rows)} disabled={rows.length === 0}>
+                  <RefreshCw className="h-4 w-4" />
+                  刷新重复校验
+                </Button>
+              </div>
+            </div>
+
+            <label
+              className={`rounded-[28px] border border-dashed p-8 text-center transition ${
+                isDragging
+                  ? "border-accent bg-accent-soft"
+                  : "border-card-border-strong bg-white/45 hover:bg-white/60"
+              }`}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                setIsDragging(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setIsDragging(false);
+                const file = event.dataTransfer.files?.[0];
+                if (file) {
+                  void handleFile(file);
+                }
+              }}
+            >
+              <div className="mx-auto flex max-w-xl flex-col items-center gap-3">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-ink text-white">
+                  <FileSpreadsheet className="h-7 w-7" />
+                </div>
+                <p className="text-lg font-semibold">拖拽 Excel 到这里，或点击上方按钮上传</p>
+                <p className="text-sm text-muted-foreground">
+                  支持 `.xls` / `.xlsx`，自动识别多 Sheet、表头行、列名别名和已学习模板。
+                </p>
+              </div>
+            </label>
+
+            <ProgressBar
+              value={progress.percent}
+              label={`${progress.current}/${progress.total || 0} · ${progress.label}`}
+            />
+
+            {fatalError ? (
+              <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+                {fatalError}
+              </div>
+            ) : null}
+            {toast ? (
+              <div className="rounded-2xl border border-card-border bg-white/70 px-4 py-3 text-sm text-foreground">
+                {toast}
+              </div>
+            ) : null}
+          </div>
+        </Panel>
+
+        <Panel className="p-5 md:p-6">
+          <p className="section-title">样例模板</p>
+          <h2 className="mt-2 text-2xl font-semibold">题面附带的 5 份测试文件</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            已复制到项目 `public/samples` 目录，可直接下载验证列名差异、多 Sheet 和分组表头。
+          </p>
+          <div className="mt-5">
+            <SampleTemplateList />
+          </div>
+        </Panel>
+      </div>
+
+      <Panel className="p-5 md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="section-title">模板映射</p>
+            <h2 className="mt-2 text-2xl font-semibold">自动识别结果可手动调整并学习</h2>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Sparkles className="h-4 w-4" />
+            {detection ? `当前模板签名：${detection.templateSignature}` : "尚未读取文件"}
+          </div>
+        </div>
+
+        {detection && activeSheet ? (
+          <div className="mt-5 space-y-5">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-card-border bg-white/55 p-4">
+                <p className="section-title">选中 Sheet</p>
+                <p className="mt-2 text-lg font-semibold">{detection.selectedSheetName}</p>
+                {detection.availableSheets.length > 1 ? (
+                  <select
+                    className="mt-3 w-full rounded-xl border border-card-border bg-white px-3 py-2 text-sm outline-none"
+                    value={detection.selectedSheetName}
+                    onChange={(event) => handleSheetChange(event.target.value)}
+                  >
+                    {detection.availableSheets.map((sheet) => (
+                      <option key={sheet.sheetName} value={sheet.sheetName}>
+                        {sheet.sheetName}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
+              <div className="rounded-2xl border border-card-border bg-white/55 p-4">
+                <p className="section-title">命中字段数</p>
+                <p className="mt-2 text-lg font-semibold">{activeSheet.matchedFields.length} / 11</p>
+              </div>
+              <div className="rounded-2xl border border-card-border bg-white/55 p-4">
+                <p className="section-title">库内重复检查</p>
+                <p className="mt-2 text-lg font-semibold">
+                  {isCheckingCodes ? "检查中" : `${existingCodes.length} 个历史重复编码`}
+                </p>
+              </div>
+            </div>
+
+            <MappingEditor headers={headers} mapping={mapping} onChange={handleMappingChange} />
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-card-border bg-white/50 px-4 py-5 text-sm text-muted-foreground">
+            上传文件后，这里会展示自动识别出的列映射关系，并允许你手动修正。
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="p-5 md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="section-title">错误面板</p>
+            <h2 className="mt-2 text-2xl font-semibold">所有问题一次性列出，不逐条折返</h2>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={handleAddRow}>
+              <Plus className="h-4 w-4" />
+              新增空行
+            </Button>
+            <Button variant="secondary" onClick={handleExport} disabled={rows.length === 0}>
+              <Save className="h-4 w-4" />
+              导出当前预览
+            </Button>
+            <Button onClick={() => void handleSubmit()} disabled={rows.length === 0 || isSubmitting}>
+              <Send className="h-4 w-4" />
+              {isSubmitting ? "提交中..." : "提交下单"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <ErrorPanel errors={errors} />
+        </div>
+      </Panel>
+
+      <Panel className="p-5 md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="section-title">预览与编辑</p>
+            <h2 className="mt-2 text-2xl font-semibold">类 Excel 工作区</h2>
+          </div>
+          <div className="text-sm text-muted-foreground">支持直接编辑单元格，修改后实时重新校验。</div>
+        </div>
+
+        <div className="mt-5">
+          {rows.length > 0 ? (
+            <OrdersGrid rows={rows} errors={errors} onCellChange={handleCellChange} onDeleteRow={handleDeleteRow} />
+          ) : (
+            <div className="rounded-2xl border border-card-border bg-white/50 px-4 py-10 text-center text-sm text-muted-foreground">
+              暂无预览数据。请先上传 Excel 文件。
+            </div>
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
