@@ -47,6 +47,34 @@ const defaultProgress: ImportProgressState = {
   label: "等待导入 Excel 文件",
 };
 
+function getProgressDisplay(progress: ImportProgressState, rowCount: number) {
+  if (progress.phase === "idle") {
+    return {
+      value: 0,
+      label: "等待导入 Excel 文件",
+    };
+  }
+
+  if (progress.phase === "done") {
+    return {
+      value: 100,
+      label: rowCount > 0 ? `已生成 ${rowCount} 条预览数据，请检查后提交` : "导入完成，请检查预览数据",
+    };
+  }
+
+  if (progress.phase === "error") {
+    return {
+      value: progress.percent,
+      label: progress.label,
+    };
+  }
+
+  return {
+    value: progress.percent,
+    label: `${progress.current}/${progress.total || 0} · ${progress.label}`,
+  };
+}
+
 function createDefaultBatchCode() {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -73,6 +101,7 @@ export function ImportWorkspace() {
   const [submitSummary, setSubmitSummary] = useState<OrderSubmissionSummary | null>(null);
 
   const errors = useMemo(() => validateOrders(rows, existingCodes), [existingCodes, rows]);
+  const progressDisplay = useMemo(() => getProgressDisplay(progress, rows.length), [progress, rows.length]);
 
   useEffect(() => {
     void fetch("/api/template-mappings")
@@ -439,8 +468,8 @@ export function ImportWorkspace() {
             </label>
 
             <ProgressBar
-              value={progress.percent}
-              label={`${progress.current}/${progress.total || 0} · ${progress.label}`}
+              value={progressDisplay.value}
+              label={progressDisplay.label}
             />
 
             {fatalError ? (
