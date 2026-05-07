@@ -58,7 +58,10 @@ function getProgressDisplay(progress: ImportProgressState, rowCount: number) {
   if (progress.phase === "done") {
     return {
       value: 100,
-      label: rowCount > 0 ? `已生成 ${rowCount} 条预览数据，请检查后提交` : "导入完成，请检查预览数据",
+      label:
+        rowCount > 0
+          ? `100% · ${rowCount}/${rowCount} · 已生成 ${rowCount} 条预览数据，请检查后提交`
+          : "导入完成，请检查预览数据",
     };
   }
 
@@ -71,7 +74,10 @@ function getProgressDisplay(progress: ImportProgressState, rowCount: number) {
 
   return {
     value: progress.percent,
-    label: `${progress.current}/${progress.total || 0} · ${progress.label}`,
+    label:
+      progress.total > 0
+        ? `${progress.percent}% · ${progress.current}/${progress.total} · ${progress.label}`
+        : `${progress.percent}% · ${progress.label}`,
   };
 }
 

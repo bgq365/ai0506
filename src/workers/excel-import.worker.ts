@@ -26,9 +26,9 @@ self.onmessage = async (event: MessageEvent<WorkerPayload>) => {
       type: "progress",
       payload: {
         phase: "reading",
-        current: 1,
-        total: 4,
-        percent: clampPercent(1, 4),
+        current: 0,
+        total: 0,
+        percent: 8,
         label: "读取 Excel 文件中",
       },
     });
@@ -43,24 +43,24 @@ self.onmessage = async (event: MessageEvent<WorkerPayload>) => {
       type: "progress",
       payload: {
         phase: "detecting",
-        current: 2,
-        total: 4,
-        percent: clampPercent(2, 4),
-        label: "识别模板结构中",
+        current: 0,
+        total: 0,
+        percent: 15,
+        label: "准备分析工作表",
       },
     });
 
-    const result = analyzeWorkbook(workbook, fileName, savedMappings);
-
-    postMessageSafe({
-      type: "progress",
-      payload: {
-        phase: "normalizing",
-        current: 3,
-        total: 4,
-        percent: clampPercent(3, 4),
-        label: `已生成 ${result.rows.length} 条预览数据`,
-      },
+    const result = analyzeWorkbook(workbook, fileName, savedMappings, (progress) => {
+      postMessageSafe({
+        type: "progress",
+        payload: {
+          phase: progress.phase,
+          current: progress.current,
+          total: progress.total,
+          percent: clampPercent(progress.current, progress.total),
+          label: progress.label,
+        },
+      });
     });
 
     postMessageSafe({
@@ -72,9 +72,9 @@ self.onmessage = async (event: MessageEvent<WorkerPayload>) => {
       type: "progress",
       payload: {
         phase: "done",
-        current: 4,
-        total: 4,
-        percent: clampPercent(4, 4),
+        current: result.rows.length,
+        total: result.rows.length,
+        percent: 100,
         label: "导入完成",
       },
     });

@@ -13,6 +13,13 @@ import type {
 } from "@/lib/types";
 import { cleanCellValue, normalizeHeaderValue } from "@/lib/utils";
 
+interface AnalyzeWorkbookProgress {
+  phase: "detecting" | "normalizing";
+  current: number;
+  total: number;
+  label: string;
+}
+
 function scoreHeader(values: string[]) {
   let score = 0;
 
@@ -95,7 +102,11 @@ function selectBestSheet(sheetAnalyses: SheetAnalysis[]) {
   })[0];
 }
 
-function toDraftRows(sheet: SheetAnalysis, templateMapping?: TemplateMapping) {
+function toDraftRows(
+  sheet: SheetAnalysis,
+  templateMapping?: TemplateMapping,
+  onProgress?: (progress: AnalyzeWorkbookProgress) => void,
+) {
   const activeMapping = templateMapping?.mapping ?? sheet.mapping;
   const headerCandidate = sheet.headerCandidate;
   if (!headerCandidate) {
@@ -107,7 +118,11 @@ function toDraftRows(sheet: SheetAnalysis, templateMapping?: TemplateMapping) {
     headerIndexMap.set(header, index);
   });
 
-  return sheet.rawRows.slice(headerCandidate.rowIndex + 1).map((row, index) => {
+  const sourceRows = sheet.rawRows.slice(headerCandidate.rowIndex + 1);
+  const total = sourceRows.length;
+  const drafts: OrderDraft[] = [];
+
+  sourceRows.forEach((row, index) => {
     const draft: OrderDraft = {
       rowId: nanoid(),
       rowIndex: index + 1,
@@ -137,16 +152,45 @@ function toDraftRows(sheet: SheetAnalysis, templateMapping?: TemplateMapping) {
       draft[field] = cellIndex === undefined ? "" : cleanCellValue(row[cellIndex]);
     });
 
-    return draft;
+    drafts.push(draft);
+
+    const current = index + 1;
+    if (onProgress && (current === total || current % 25 === 0)) {
+      onProgress({
+        phase: "normalizing",
+        current,
+        total,
+        label: "正在生成预览数据",
+      });
+    }
   });
+
+  return drafts;
+}
+
+function estimateSheetRowCount(sheet: XLSX.WorkSheet) {
+  const ref = sheet["!ref"];
+  if (!ref) {
+    return 0;
+  }
+
+  const range = XLSX.utils.decode_range(ref);
+  return range.e.r - range.s.r + 1;
 }
 
 export function analyzeWorkbook(
   workbook: XLSX.WorkBook,
   fileName: string,
   savedMappings: TemplateMapping[] = [],
+  onProgress?: (progress: AnalyzeWorkbookProgress) => void,
 ): ImportDetectionResult {
-  const analyses = workbook.SheetNames.map((sheetName) => {
+  const totalRows = workbook.SheetNames.reduce(
+    (sum, sheetName) => sum + estimateSheetRowCount(workbook.Sheets[sheetName]),
+    0,
+  );
+  let processedRows = 0;
+
+  const analyses = workbook.SheetNames.map((sheetName, sheetIndex) => {
     const sheet = workbook.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(sheet, {
       header: 1,
@@ -164,7 +208,7 @@ export function analyzeWorkbook(
       headerCandidate?.values ?? [],
     );
 
-    return {
+    const analysis = {
       sheetName,
       rowCount: rawRows.length,
       columnCount: rawRows.reduce((max, row) => Math.max(max, row.length), 0),
@@ -175,13 +219,23 @@ export function analyzeWorkbook(
       matchedFields,
       templateSignature,
     } satisfies SheetAnalysis;
+
+    processedRows += rawRows.length;
+    onProgress?.({
+      phase: "detecting",
+      current: Math.min(processedRows, totalRows || processedRows),
+      total: totalRows || processedRows,
+      label: `正在分析 Sheet ${sheetIndex + 1}/${workbook.SheetNames.length}`,
+    });
+
+    return analysis;
   });
 
   const selectedSheet = selectBestSheet(analyses);
   const savedTemplate = savedMappings.find(
     (mapping) => mapping.templateSignature === selectedSheet.templateSignature,
   );
-  const rows = toDraftRows(selectedSheet, savedTemplate);
+  const rows = toDraftRows(selectedSheet, savedTemplate, onProgress);
 
   return {
     fileName,
