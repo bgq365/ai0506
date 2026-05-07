@@ -47,6 +47,8 @@ const defaultProgress: ImportProgressState = {
   label: "等待导入 Excel 文件",
 };
 
+const PREVIEW_PAGE_SIZE = 20;
+
 function getProgressDisplay(progress: ImportProgressState, rowCount: number) {
   if (progress.phase === "idle") {
     return {
@@ -105,9 +107,16 @@ export function ImportWorkspace() {
   const [fatalError, setFatalError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [submitSummary, setSubmitSummary] = useState<OrderSubmissionSummary | null>(null);
+  const [previewPage, setPreviewPage] = useState(1);
 
   const errors = useMemo(() => validateOrders(rows, existingCodes), [existingCodes, rows]);
   const progressDisplay = useMemo(() => getProgressDisplay(progress, rows.length), [progress, rows.length]);
+  const previewTotalPages = useMemo(() => Math.max(1, Math.ceil(rows.length / PREVIEW_PAGE_SIZE)), [rows.length]);
+  const currentPreviewPage = Math.min(previewPage, previewTotalPages);
+  const previewPageRows = useMemo(() => {
+    const start = (currentPreviewPage - 1) * PREVIEW_PAGE_SIZE;
+    return rows.slice(start, start + PREVIEW_PAGE_SIZE);
+  }, [currentPreviewPage, rows]);
 
   useEffect(() => {
     void fetch("/api/template-mappings")
@@ -128,6 +137,7 @@ export function ImportWorkspace() {
     setProgress(defaultProgress);
     setFatalError("");
     setBatchCode(createDefaultBatchCode());
+    setPreviewPage(1);
 
     if (inputRef.current) {
       inputRef.current.value = "";
@@ -187,6 +197,7 @@ export function ImportWorkspace() {
   async function handleFile(file: File) {
     setFatalError("");
     setToast("");
+    setPreviewPage(1);
 
     if (!/\.xlsx?$/.test(file.name.toLowerCase())) {
       setFatalError("仅支持 .xls / .xlsx 文件。");
@@ -648,12 +659,47 @@ export function ImportWorkspace() {
             <p className="section-title">预览与编辑</p>
             <h2 className="mt-2 text-2xl font-semibold">类 Excel 工作区</h2>
           </div>
-          <div className="text-sm text-muted-foreground">支持直接编辑单元格，修改后实时重新校验。</div>
+          <div className="text-sm text-muted-foreground">
+            支持直接编辑单元格，修改后实时重新校验。每页显示 {PREVIEW_PAGE_SIZE} 条。
+          </div>
         </div>
 
         <div className="mt-5">
           {rows.length > 0 ? (
-            <OrdersGrid rows={rows} errors={errors} onCellChange={handleCellChange} onDeleteRow={handleDeleteRow} />
+            <div className="space-y-4">
+              <OrdersGrid
+                rows={previewPageRows}
+                errors={errors}
+                onCellChange={handleCellChange}
+                onDeleteRow={handleDeleteRow}
+              />
+              <div className="flex flex-col gap-3 rounded-2xl border border-card-border bg-white/55 px-4 py-4 md:flex-row md:items-center md:justify-between">
+                <div className="text-sm text-muted-foreground">
+                  第 {previewPage} / {previewTotalPages} 页，共 {rows.length} 条，每页 {PREVIEW_PAGE_SIZE} 条
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={currentPreviewPage <= 1}
+                    onClick={() => setPreviewPage((currentPage) => Math.max(1, currentPage - 1))}
+                  >
+                    上一页
+                  </Button>
+                  <div className="rounded-2xl border border-card-border bg-white px-4 py-2 text-sm text-foreground">
+                    {currentPreviewPage}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={currentPreviewPage >= previewTotalPages}
+                    onClick={() => setPreviewPage((currentPage) => Math.min(previewTotalPages, currentPage + 1))}
+                  >
+                    下一页
+                  </Button>
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="rounded-2xl border border-card-border bg-white/50 px-4 py-10 text-center text-sm text-muted-foreground">
               暂无预览数据。请先上传 Excel 文件。
