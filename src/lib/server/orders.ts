@@ -87,6 +87,9 @@ export async function submitOrders(
   batchCode: string,
   fileName: string,
   templateSignature: string,
+  sheetName: string,
+  headerFingerprint: string,
+  mapping: TemplateMapping["mapping"],
   rows: OrderDraft[],
 ) {
   const supabase = getSupabaseServerClient();
@@ -155,6 +158,13 @@ export async function submitOrders(
   if (insertOrdersError) {
     throw insertOrdersError;
   }
+
+  await saveTemplateMapping({
+    templateSignature,
+    sheetName,
+    headerFingerprint,
+    mapping,
+  });
 
   return {
     batchId,

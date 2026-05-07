@@ -120,6 +120,9 @@ export interface SubmitOrdersRequest {
   batchCode: string;
   fileName: string;
   templateSignature: string;
+  sheetName: string;
+  headerFingerprint: string;
+  mapping: FieldMapping;
   rows: OrderDraft[];
 }
 

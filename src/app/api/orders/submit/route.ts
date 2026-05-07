@@ -14,6 +14,9 @@ export async function POST(request: Request) {
       parsed.data.batchCode,
       parsed.data.fileName,
       parsed.data.templateSignature,
+      parsed.data.sheetName,
+      parsed.data.headerFingerprint,
+      parsed.data.mapping,
       parsed.data.rows,
     );
 

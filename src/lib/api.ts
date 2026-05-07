@@ -26,6 +26,9 @@ export const submitOrdersSchema = z.object({
   batchCode: z.string().min(1),
   fileName: z.string().min(1),
   templateSignature: z.string().min(1),
+  sheetName: z.string().min(1),
+  headerFingerprint: z.string().min(1),
+  mapping: z.record(z.string(), z.string()),
   rows: z.array(orderDraftSchema),
 });
 

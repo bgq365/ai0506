@@ -104,25 +104,6 @@ export function ImportWorkspace() {
     }
   }
 
-  async function saveCurrentMapping(nextMapping: FieldMapping, nextDetection: ImportDetectionResult) {
-    try {
-      await fetch("/api/template-mappings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          templateSignature: nextDetection.templateSignature,
-          sheetName: nextDetection.selectedSheetName,
-          headerFingerprint: nextDetection.headerFingerprint,
-          mapping: nextMapping,
-        }),
-      });
-
-      setToast("模板映射已记录，下次同结构会自动套用。");
-    } catch {
-      setToast("模板映射保存失败，但当前预览不受影响。");
-    }
-  }
-
   function remapRows(nextDetection: ImportDetectionResult, nextMapping: FieldMapping, sheetName: string) {
     const sheet = nextDetection.availableSheets.find((item) => item.sheetName === sheetName);
     const headerCandidate = sheet?.headerCandidate;
@@ -217,7 +198,6 @@ export function ImportWorkspace() {
     setMapping(nextMapping);
     setRows(nextRows);
     void refreshExistingCodes(nextRows);
-    void saveCurrentMapping(nextMapping, detection);
   }
 
   function handleSheetChange(sheetName: string) {
@@ -279,6 +259,9 @@ export function ImportWorkspace() {
           batchCode,
           fileName: detection.fileName,
           templateSignature: detection.templateSignature,
+          sheetName: detection.selectedSheetName,
+          headerFingerprint: detection.headerFingerprint,
+          mapping,
           rows,
         }),
       });
