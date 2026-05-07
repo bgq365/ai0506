@@ -16,6 +16,16 @@ const DOWNLOAD_TEMPLATES = [
     label: "分组表头模板",
     description: "按发件方、收件方、货物信息分组展示，适合人工录单场景。",
   },
+  {
+    fileName: "parcel-pivot-template-english.xlsx",
+    label: "英文列名模板",
+    description: "使用英文别名字段，适合英文业务表或国际化客户资料。",
+  },
+  {
+    fileName: "parcel-pivot-template-multisheet.xlsx",
+    label: "多 Sheet 模板",
+    description: "含说明页与数据页，便于验证系统自动选择正确数据 Sheet。",
+  },
 ];
 
 export function SampleTemplateList() {

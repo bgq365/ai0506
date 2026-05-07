@@ -387,7 +387,7 @@ export function ImportWorkspace() {
           <div className="grid gap-3 md:grid-cols-3">
             <div className="metric-chip rounded-3xl px-4 py-3">
               <p className="section-title">模板下载</p>
-              <p className="mt-2 text-3xl font-semibold">3</p>
+              <p className="mt-2 text-3xl font-semibold">5</p>
             </div>
             <div className="metric-chip rounded-3xl px-4 py-3">
               <p className="section-title">实时状态</p>

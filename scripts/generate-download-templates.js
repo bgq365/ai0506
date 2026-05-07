@@ -23,6 +23,22 @@ const groupedRows = [
   ["ORD-2024-003", "加急", "孙七", "13800138003", "成都市武侯区人民南路50号", "周八", "13900139003", "重庆市渝中区解放碑步行街1号", 10.5, 5, "冷冻"],
 ];
 
+const englishRows = [
+  ["Ref Code", "Sender", "Sender Tel", "Sender Address", "Receiver", "Receiver Tel", "Receiver Address", "Weight", "Qty", "Temp Zone", "Remark"],
+  ["EN-2024-001", "Alice Zhang", "+86 13800138004", "88 Jianguo Road, Beijing", "Bob Li", "+86 13900139004", "100 Lujiazui Road, Shanghai", 2.8, 1, "常温", "English aliases"],
+];
+
+const instructionRows = [
+  ["说明页"],
+  ["本工作簿包含两个 Sheet，请将订单数据填写到“订单数据”页。"],
+  ["批次号在系统页面自动生成，无需写入表格。"],
+];
+
+const multiSheetRows = [
+  ["客户单号", "发件人姓名", "发件人电话", "发件人地址", "收件人姓名", "收件人电话", "收件人地址", "重量", "件数", "温层", "备注"],
+  ["MS-2024-001", "陈一", "13800138005", "杭州市西湖区文三路90号", "钱二", "13900139005", "苏州市工业园区星湖街188号", 6.6, 3, "冷藏", "多Sheet数据页"],
+];
+
 function writeWorkbook(fileName, sheetName, rows) {
   const workbook = XLSX.utils.book_new();
   const worksheet = XLSX.utils.aoa_to_sheet(rows);
@@ -33,5 +49,11 @@ function writeWorkbook(fileName, sheetName, rows) {
 writeWorkbook("parcel-pivot-template-standard.xlsx", "标准导入", standardRows);
 writeWorkbook("parcel-pivot-template-ecommerce.xlsx", "电商导入", ecommerceRows);
 writeWorkbook("parcel-pivot-template-grouped.xlsx", "分组导入", groupedRows);
+writeWorkbook("parcel-pivot-template-english.xlsx", "EnglishOrders", englishRows);
+
+const multiSheetWorkbook = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(multiSheetWorkbook, XLSX.utils.aoa_to_sheet(instructionRows), "填写说明");
+XLSX.utils.book_append_sheet(multiSheetWorkbook, XLSX.utils.aoa_to_sheet(multiSheetRows), "订单数据");
+XLSX.writeFile(multiSheetWorkbook, path.join(outputDir, "parcel-pivot-template-multisheet.xlsx"));
 
 console.log("Templates generated:", fs.readdirSync(outputDir));
