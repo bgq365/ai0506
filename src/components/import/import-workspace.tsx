@@ -34,6 +34,7 @@ import type {
   ImportProgressState,
   ImportWorkerMessage,
   OrderDraft,
+  OrderSubmissionSummary,
   TemplateMapping,
 } from "@/lib/types";
 import { validateOrders } from "@/lib/validation";
@@ -69,6 +70,7 @@ export function ImportWorkspace() {
   const [toast, setToast] = useState("");
   const [fatalError, setFatalError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [submitSummary, setSubmitSummary] = useState<OrderSubmissionSummary | null>(null);
 
   const errors = useMemo(() => validateOrders(rows, existingCodes), [existingCodes, rows]);
 
@@ -264,6 +266,8 @@ export function ImportWorkspace() {
 
     setIsSubmitting(true);
     setToast("");
+    setSubmitSummary(null);
+    const totalCount = rows.length;
 
     try {
       const response = await fetch("/api/orders/submit", {
@@ -282,13 +286,45 @@ export function ImportWorkspace() {
 
       const json = await response.json();
       if (!response.ok) {
+        const failures =
+          json.error?.details?.map((detail: { field?: CanonicalFieldKey; message: string }) => {
+            const match = detail.message.match(/^第\s+(\d+)\s+行[:：](.*)$/);
+            return {
+              rowIndex: match ? Number(match[1]) : 0,
+              field: detail.field,
+              message: match ? match[2].trim() : detail.message,
+            };
+          }) ?? [];
+
+        setSubmitSummary({
+          batchCode,
+          totalCount,
+          successCount: 0,
+          failedCount: failures.length > 0 ? failures.length : totalCount,
+          failures,
+        });
         setToast(json.error?.message ?? "提交失败");
         return;
       }
 
+      setSubmitSummary({
+        batchId: json.data.batchId,
+        batchCode,
+        totalCount,
+        successCount: json.data.successCount,
+        failedCount: json.data.failedCount,
+        failures: json.data.failures ?? [],
+      });
       setToast(`提交成功：批次号 ${batchCode}，${json.data.successCount} 条已写入数据库。`);
       resetWorkspaceAfterSubmit();
     } catch {
+      setSubmitSummary({
+        batchCode,
+        totalCount,
+        successCount: 0,
+        failedCount: totalCount,
+        failures: [],
+      });
       setToast("提交失败，请稍后重试。");
     } finally {
       setIsSubmitting(false);
@@ -514,6 +550,61 @@ export function ImportWorkspace() {
         <div className="mt-5">
           <ErrorPanel errors={errors} />
         </div>
+      </Panel>
+
+      <Panel className="p-5 md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="section-title">提交结果</p>
+            <h2 className="mt-2 text-2xl font-semibold">显示本次提交的成功、失败和总条数</h2>
+          </div>
+          {submitSummary ? (
+            <div className="text-sm text-muted-foreground">批次号：{submitSummary.batchCode}</div>
+          ) : null}
+        </div>
+
+        {submitSummary ? (
+          <div className="mt-5 space-y-5">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-card-border bg-white/55 p-4">
+                <p className="section-title">总条数</p>
+                <p className="mt-2 text-3xl font-semibold">{submitSummary.totalCount}</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+                <p className="section-title">成功条数</p>
+                <p className="mt-2 text-3xl font-semibold text-emerald-700">{submitSummary.successCount}</p>
+              </div>
+              <div className="rounded-2xl border border-orange-200 bg-orange-50/80 p-4">
+                <p className="section-title">失败条数</p>
+                <p className="mt-2 text-3xl font-semibold text-orange-700">{submitSummary.failedCount}</p>
+              </div>
+            </div>
+
+            {submitSummary.failures.length > 0 ? (
+              <div className="rounded-3xl border border-orange-200 bg-orange-50/60 p-4">
+                <p className="text-sm font-semibold text-orange-800">失败明细</p>
+                <ul className="mt-3 grid gap-2 text-sm text-orange-900 md:grid-cols-2">
+                  {submitSummary.failures.map((failure, index) => (
+                    <li
+                      key={`${failure.rowIndex}-${failure.field ?? "unknown"}-${index}`}
+                      className="rounded-2xl bg-white/70 px-3 py-2"
+                    >
+                      第 {failure.rowIndex} 行{failure.field ? `，${failure.field}` : ""}：{failure.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-700">
+                本次提交已完成，没有失败记录。
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-card-border bg-white/50 px-4 py-10 text-center text-sm text-muted-foreground">
+            点击“提交下单”后，这里会显示成功几条、失败几条、总共几条。
+          </div>
+        )}
       </Panel>
 
       <Panel className="p-5 md:p-6">

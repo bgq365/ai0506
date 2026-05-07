@@ -116,6 +116,15 @@ export interface OrderSubmissionFailure {
   message: string;
 }
 
+export interface OrderSubmissionSummary {
+  batchId?: string;
+  batchCode: string;
+  totalCount: number;
+  successCount: number;
+  failedCount: number;
+  failures: OrderSubmissionFailure[];
+}
+
 export interface SubmitOrdersRequest {
   batchCode: string;
   fileName: string;
